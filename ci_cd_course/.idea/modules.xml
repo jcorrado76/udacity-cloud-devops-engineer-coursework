@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ProjectModuleManager">
+    <modules>
+      <module fileurl="file://$USER_HOME$/cdond-c3-projectstarter/.idea/cdond-c3-projectstarter.iml" filepath="$USER_HOME$/cdond-c3-projectstarter/.idea/cdond-c3-projectstarter.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/ci_cd_course.iml" filepath="$PROJECT_DIR$/.idea/ci_cd_course.iml" />
+      <module fileurl="file://$PROJECT_DIR$/../../udacity_cloud_devops_engineer_final_projects/.idea/udacity_cloud_devops_engineer.iml" filepath="$PROJECT_DIR$/../../udacity_cloud_devops_engineer_final_projects/.idea/udacity_cloud_devops_engineer.iml" />
+    </modules>
+  </component>
+</project>

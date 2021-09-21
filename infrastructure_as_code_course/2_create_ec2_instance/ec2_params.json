@@ -1,0 +1,18 @@
+[
+  {
+    "ParameterKey": "SubnetId",
+    "ParameterValue": "subnet-42ae6608"
+  },
+  {
+    "ParameterKey": "VPCId",
+    "ParameterValue": "vpc-71a7f509"
+  },
+  {
+    "ParameterKey": "ImageId",
+    "ParameterValue": "ami-083ac7c7ecf9bb9b0"
+  },
+  {
+    "ParameterKey": "InstanceType",
+    "ParameterValue": "t3.micro"
+  }
+]

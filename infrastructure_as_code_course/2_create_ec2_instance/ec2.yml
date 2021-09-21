@@ -1,0 +1,69 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Joseph Corrado / Udacity - This template deploys an EC2 instance in our default VPC
+
+
+Parameters:
+  SubnetId:
+    Type: String
+    Description: Enter the Subnet ID you'd like to use for your web server
+  VPCId:
+    Type: String
+    Description: Enter the VPC ID you'd like to use for your web server
+  ImageId:
+    Type: String
+    Description: Enter the Image ID you'd like to use for your web server
+  InstanceType:
+    Type: String
+    Description: Enter the instance type you'd like to use for your web server
+    Default: t3.micro
+
+Resources:
+  # create the security group for our EC2 instance
+  # that only allows inbound access on TCP port 80
+  # and allows unrestricted outbound access
+  myWebAccessSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for our EC2 web server in default VPC
+      VpcId:
+        Ref: VPCId
+      SecurityGroupIngress:
+      # only allows ingress on TCP port 80
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+      # unrestricted outbound access
+        - IpProtocol: -1
+          FromPort: -1
+          ToPort: -1
+          CidrIp: 0.0.0.0/0
+
+  # create the web server itself
+  myWebServerInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType:
+        Ref: InstanceType
+      # Amazon Linux 2 AMI in us-west-2
+      ImageId:
+        Ref: ImageId
+      NetworkInterfaces:
+        # ensure the instance is assigned a public IP address
+        - AssociatePublicIpAddress: "true"
+          DeviceIndex: "0"
+          GroupSet:
+            - Ref: "myWebAccessSecurityGroup"
+          SubnetId:
+            Ref: SubnetId
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          sudo yum update -y
+          sudo yum install -y httpd
+          sudo systemctl start httpd
+          sudo systemctl enable httpd
+      Tags:
+        - Key: "Name"
+          Value: "Challenge 1 EC2"

@@ -1,0 +1,14 @@
+[
+  {
+    "ParameterKey": "EnvironmentName",
+    "ParameterValue": "UdacityPrivateDB"
+  },
+  {
+    "ParameterKey": "DbUser",
+    "ParameterValue": "user"
+  },
+  {
+    "ParameterKey": "DbPass",
+    "ParameterValue": "TheBestUserEver!"
+  }
+]

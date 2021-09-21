@@ -1,0 +1,14 @@
+[
+  {
+    "ParameterKey": "EnvironmentName",
+    "ParameterValue": "Udacity-Infrastructure-Creation"
+  },
+  {
+    "ParameterKey": "AMIID",
+    "ParameterValue": "ami-03d5c68bab01f3496"
+  },
+  {
+    "ParameterKey": "KEYPAIRID",
+    "ParameterValue": "macbook-us-west-2"
+  }
+]

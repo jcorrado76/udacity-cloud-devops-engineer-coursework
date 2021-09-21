@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="VcsDirectoryMappings">
+    <mapping directory="$USER_HOME$/cdond-c3-projectstarter" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/.." vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/4_infrastructure_creation" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/5_remote_ansible_from_circleci" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/6_promote_cdn_to_production" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../udacity_cloud_devops_engineer_final_projects" vcs="Git" />
+  </component>
+</project>

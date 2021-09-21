@@ -1,0 +1,164 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Joseph Corrado / Udacity
+
+  This file will contain the servers and load balancing that will depend on the network infrastructure we created before.
+
+Parameters:
+  EnvironmentName:
+    Description: An environment name to prefix the names of our resources.
+    Type: String
+  WebServerAMI:
+    Description: The AMI to use for the web server
+    Type: String
+
+Resources:
+  LoadBalancerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: This security group will allow HTTP traffic into our load balancer
+      VpcId:
+        Fn::ImportValue:
+          !Sub "${EnvironmentName}-VPCID"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          CidrIp: 0.0.0.0/0
+
+  WebServerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow HTTP traffic into the web server via SSH from localhost only.
+      VpcId:
+        Fn::ImportValue:
+          !Sub "${EnvironmentName}-VPCID"
+      SecurityGroupIngress:
+        # this is for ssh'ing into the instance - you could lock this down to your personal IP address
+        # if your EC2 instances don't have public IP addresses, you can't use this!
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+
+  # this is an ingress rule for the web server security group that allows
+  # in traffic from the LB SQ on port 80 over TCP protocol
+  # see how I did this from the VPC security groups with egress and ingress rules
+  # section on the SecurityGroupIngress cloudformation docs page
+  WebServerIngressFromLB:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      FromPort: 80
+      ToPort: 80
+      SourceSecurityGroupId:
+        Fn::GetAtt:
+          - LoadBalancerSecurityGroup
+          - GroupId
+      GroupId:
+        Fn::GetAtt:
+          - WebServerSecurityGroup
+          - GroupId
+
+  WebServerLaunchConfiguration:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          apt-get update -y
+          apt-get install apache2 -y
+          systemctl start apache2.service
+          cd /var/www/html
+          echo "Udacity Demo Web Server up and running!" > index.html
+      ImageId: !Ref WebServerAMI
+      KeyName: udacity-devops-nanodegree
+      SecurityGroups:
+        - !Ref WebServerSecurityGroup
+      InstanceType: t3.small
+      BlockDeviceMappings:
+        - DeviceName: "/dev/sdk"
+          Ebs:
+            VolumeSize: '10'
+
+  WebAppTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 10
+      HealthCheckPath: /
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 8
+      HealthyThresholdCount: 2
+      # this is the port the instances spun up under this target group
+      # will be accessible on - it needs to match what the listener/LB/SG are expecting
+      Port: 80
+      Protocol: HTTP
+      UnhealthyThresholdCount: 5
+      VpcId:
+        Fn::ImportValue:
+          Fn::Sub: "${EnvironmentName}-VPCID"
+
+  AutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      # this is a list of subnet IDs for a VPC where instances in the
+      # autoscaling group can be created
+      VPCZoneIdentifier:
+        - Fn::ImportValue: !Sub "${EnvironmentName}-Private-Subnets"
+      LaunchConfigurationName: !Ref WebServerLaunchConfiguration
+      # min number of EC2 instances
+      MinSize: '3'
+      # max number of EC2 instances
+      MaxSize: '5'
+      TargetGroupARNs:
+        - Ref: WebAppTargetGroup
+      HealthCheckGracePeriod: 60
+      HealthCheckType: ELB
+
+  WebServerLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Subnets:
+        - Fn::ImportValue: !Sub "${EnvironmentName}-Public-Subnet-AZ1"
+        - Fn::ImportValue: !Sub "${EnvironmentName}-Public-Subnet-AZ2"
+      SecurityGroups:
+        - Ref: LoadBalancerSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName} Application Load Balancer
+
+  WebServerLoadBalancerListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref WebAppTargetGroup
+      LoadBalancerArn: !Ref WebServerLoadBalancer
+      Port: '80'
+      Protocol: HTTP
+
+  LBListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref WebAppTargetGroup
+      Conditions:
+        - Field: path-pattern
+          Values: [/]
+      ListenerArn: !Ref WebServerLoadBalancerListener
+      Priority: 1
+
+Outputs:
+  URL:
+    Description: The URL of the website.
+    Value: !Join [ "", [ "http://", !GetAtt WebServerLoadBalancer.DNSName ]]

@@ -1,0 +1,97 @@
+Description: >
+  Joseph Corrado / Udacity
+  This template deploys a private EC2 instance into the network defined by network.yml
+
+Parameters:
+  EnvironmentName:
+    Description: An environment name that will be prefixed to the resources in this stack
+    Type: String
+
+  ImageId:
+    Description: The AMI ID for the private linux server
+    Type: String
+
+  InstanceType:
+    Description: The instance size for the private linux server
+    Type: String
+
+Resources:
+  ### PRIVATE SERVER
+  RoleForSSMAccess:
+    Type: "AWS::IAM::Role"
+    Properties:
+      # the trust policy associated with this role - defines what entities
+      # can assume this role
+      # only one trust policy can have a role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      # path to the role
+      Path: /
+      # this allows us to use EC2 session manager to SSH into our private instance from the console
+      # even without a public IP address
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMFullAccess
+
+  ServerInstanceProfile:
+    Type: "AWS::IAM::InstanceProfile"
+    Properties:
+      Path: /
+      Roles:
+        - !Ref RoleForSSMAccess
+
+  PrivateLinuxServer:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType:
+        Ref: InstanceType
+      # Amazon Linux 2 AMI in us-west-2
+      ImageId:
+        Ref: ImageId
+      NetworkInterfaces:
+        # ensure the instance is NOT assigned a public IP address
+        - AssociatePublicIpAddress: "false"
+          DeviceIndex: "0"
+          GroupSet:
+            - Ref: "PrivateServerSecurityGroup"
+          SubnetId:
+            Fn::ImportValue:
+              !Sub "${EnvironmentName}-Private-Subnet-AZ1"
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          sudo yum update -y
+          sudo yum install -y httpd
+          sudo systemctl start httpd
+          sudo systemctl enable httpd
+      IamInstanceProfile:
+        Ref: ServerInstanceProfile
+      Tags:
+        - Key: "Name"
+          Value: "Private Instance DB Challenge"
+
+  PrivateServerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for private web server
+      VpcId:
+        Fn::ImportValue:
+          !Sub "${EnvironmentName}-VPCID"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+
+Outputs:
+  PrivateServerSecurityGroup:
+    Description: A reference to the security group for the private instance we created
+    Value: !Ref PrivateServerSecurityGroup
+    Export:
+      Name: !Sub ${EnvironmentName}-PrivateServerSecurityGroup

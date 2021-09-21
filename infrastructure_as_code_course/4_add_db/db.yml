@@ -1,0 +1,63 @@
+# the latest template version is this one, and this one is the only valid value (as of 2021-08-27)
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  EnvironmentName:
+    Description: The name of the environment - used for prefixing our resources to keep it organized
+    Type: String
+
+  DbUser:
+    Description: The username the default database will be created with
+    Type: String
+
+  DbPass:
+    Description: The password the default database will be created with
+    Type: String
+
+Resources:
+
+  DBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: This is the security group to allow traffic into our RDS instance.
+      VpcId:
+        Fn::ImportValue:
+          !Sub "${EnvironmentName}-VPCID"
+
+  DBSecurityGroupIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: -1
+      GroupId: !Ref DBSecurityGroup
+      SourceSecurityGroupId:
+        Fn::ImportValue:
+          !Sub "${EnvironmentName}-PrivateServerSecurityGroup"
+
+  DBSubnetGroup:
+    Type: "AWS::RDS::DBSubnetGroup"
+    Properties:
+      DBSubnetGroupDescription: This is the subnet group that our database will depend upon.
+      SubnetIds:
+        - Fn::ImportValue:
+            !Sub "${EnvironmentName}-Private-Subnet-AZ1"
+        - Fn::ImportValue:
+            !Sub "${EnvironmentName}-Private-Subnet-AZ2"
+
+  MyDB:
+    Type: "AWS::RDS::DBInstance"
+    Properties:
+      DBName: UdacityDatabaseChallengeDB
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      PubliclyAccessible: false
+      MultiAZ: false
+      VPCSecurityGroups:
+       - !Ref DBSecurityGroup
+      AllocatedStorage: '5'
+      DBInstanceClass: db.t2.small
+      Engine: MySQL
+      MasterUsername: !Ref DbUser
+      MasterUserPassword: !Ref DbPass
+      Tags:
+        - Key: "Name"
+          Value: !Sub "${EnvironmentName} MS SQL RDS"
+    # leave this DB up even after we delete the stack
+    DeletionPolicy: "Retain"

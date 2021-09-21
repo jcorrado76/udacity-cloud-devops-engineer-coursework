@@ -1,0 +1,120 @@
+version: 2.1
+orbs:
+  aws-cli: circleci/aws-cli@2.0.3
+
+jobs:
+  create_and_deploy_front_end:
+    docker:
+      - image: amazon/aws-cli
+
+    steps:
+      - checkout
+      - run:
+          name: Create new S3 bucket stack using current CircleCI workflow ID
+          command: |
+            aws cloudformation deploy \
+              --template-file bucket_template.yml \
+              --stack-name cdn-s3-bucket-${CIRCLE_WORKFLOW_ID:0:7} \
+              --parameter-overrides EnvironmentName="Udacity-CDN-Creation" CircleCiWorkflowId="${CIRCLE_WORKFLOW_ID:0:7}" \
+              --region us-west-2
+      # you could have synced from this repo (using contents of checkout)
+      # OR you could have synced from previous bucket by looking up its S3 URI as we do down below by looking at what bucket
+      # the CDN is currently using
+      # Here, we choose to sync contents from this checkout into the new bucket.
+      - run:
+          name: Sync S3 website contents to new bucket
+          command: |
+            ls -al .
+            aws s3 sync . s3://udacity-cdn-promote-to-production-${CIRCLE_WORKFLOW_ID:0:7}
+
+  get_last_deployment_id:
+    docker:
+      - image: amazon/aws-cli
+    steps:
+      - checkout
+      - run: yum install -y tar gzip
+      - run:
+          name: Grab previous bucket name that CloudFront is currently using. We lookup by the Name field of the Output from our CloudFront stack
+          command: |
+            aws cloudformation list-exports \
+              --query "Exports[?Name==\`Bucket-Name\`].Value" \
+              --no-paginate --output text > ~/previousBucketName.txt
+      - persist_to_workspace:
+          root: ~/
+          paths:
+            - previousBucketName.txt
+  promote_to_production:
+    docker:
+      - image: amazon/aws-cli
+    steps:
+      - checkout
+      - run:
+          name: We run a changeset against our S3 bucket stack by simply specifying a new value for the BucketName parameter. CloudFormation performs the steps necessary to move the S3 bucket stack from its previous state to the state specified by this command.
+          command: |
+            aws cloudformation deploy \
+              --template-file cloudfront_template.yml \
+              --stack-name cloudfront-stack \
+              --parameter-overrides BucketName="udacity-cdn-promote-to-production-${CIRCLE_WORKFLOW_ID:0:7}"
+  delete_previous_stack:
+    docker:
+      - image: amazon/aws-cli
+    steps:
+      - checkout
+      - run: yum install -y tar gzip
+      - attach_workspace:
+          at: ~/
+      - run:
+          name: Delete the old bucket from before we promoted
+          command: |
+            export PreviousCircleCiId=$(cat ~/previousBucketName.txt | grep -Eo "\w*$")
+            export PreviousBucketId=$(cat ~/previousBucketName.txt)
+            echo $PreviousCircleCiId
+            aws s3 rm "s3://${PreviousBucketId}" --recursive
+            aws cloudformation delete-stack --stack-name cdn-s3-bucket-$PreviousCircleCiId
+  invalidate_cloudfront_cache:
+    docker:
+      - image: amazon/aws-cli
+    steps:
+      - run:
+          name: Invalidate cache of the CloudFront distribution to content is refreshed
+          command: |
+            export CloudFrontDistId=$(aws cloudfront list-distributions \
+              --output text --no-paginate \
+              --query 'DistributionList.Items[0].Id')
+            echo $CloudFrontDistId
+            aws cloudfront create-invalidation \
+              --distribution-id $CloudFrontDistId \
+              --paths "/index.html"
+
+  delete_old_bucket:
+    docker:
+      - image: amazon/aws-cli
+    steps:
+      - checkout
+      - run: yum install -y tar gzip
+      - attach_workspace:
+          at: ~/
+      - run:
+          name: Delete the old bucket from before we promoted
+          command: |
+            export PreviousBucketId=$(cat ~/previousBucketName.txt)
+            aws s3 rm "s3://${PreviousBucketId}" --recursive
+
+workflows:
+  # Name the workflow "welcome"
+  PromoteToProduction:
+    # Run the welcome/run job in its own container
+    jobs:
+      - create_and_deploy_front_end
+      - get_last_deployment_id:
+          requires:
+            - create_and_deploy_front_end
+      - promote_to_production:
+          requires:
+            - get_last_deployment_id
+      - delete_previous_stack:
+          requires:
+            - promote_to_production
+      - invalidate_cloudfront_cache:
+          requires:
+            - delete_previous_stack

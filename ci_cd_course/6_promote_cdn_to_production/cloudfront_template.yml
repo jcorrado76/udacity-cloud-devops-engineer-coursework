@@ -1,0 +1,45 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  This CloudFormation template spins up a stack whose only purpose is to create a CloudFront distribution
+
+Parameters:
+  BucketName:
+    Description: Bucket name from which we pull the web content (index.html) from
+    Type: String
+  EnvironmentName:
+    Description: An environment name that will be prefixed to resource names
+    Type: String
+
+Resources:
+  CloudFrontOriginAccessIdentity:
+    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: Origin Access Identity for Serverless Static Website
+
+  WebsiteCDN:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Origins:
+          - DomainName: !Sub "${BucketName}.s3.amazonaws.com"
+            Id: webpage
+            S3OriginConfig:
+              OriginAccessIdentity: !Sub "origin-access-identity/cloudfront/${CloudFrontOriginAccessIdentity}"
+        Enabled: True
+        DefaultRootObject: index.html
+        DefaultCacheBehavior:
+          ForwardedValues:
+            QueryString: False
+          TargetOriginId: webpage
+          ViewerProtocolPolicy: allow-all
+
+Outputs:
+  BucketName:
+    Value: !Sub ${BucketName}
+    Export:
+      Name: Bucket-Name
+  CloudFrontDomain:
+    Value: !GetAtt WebsiteCDN.DomainName
+    Export:
+      Name: CloudFront-Domain-Name

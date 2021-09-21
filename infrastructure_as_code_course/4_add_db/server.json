@@ -1,0 +1,14 @@
+[
+  {
+    "ParameterKey": "EnvironmentName",
+    "ParameterValue": "UdacityPrivateDB"
+  },
+  {
+    "ParameterKey": "ImageId",
+    "ParameterValue": "ami-083ac7c7ecf9bb9b0"
+  },
+  {
+    "ParameterKey": "InstanceType",
+    "ParameterValue": "t3.micro"
+  }
+]

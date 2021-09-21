@@ -1,0 +1,153 @@
+# Use the latest 2.1 version of CircleCI pipeline process engine. See: https://circleci.com/docs/2.0/configuration-reference
+version: 2.1
+# Use a package of configuration called an orb.
+orbs:
+  # Choose either one of the orbs below
+  # Declare a dependency on the welcome-orb
+  # welcome: circleci/welcome-orb@0.4.1
+  aws-cli: circleci/aws-cli@2.0.3
+# Orchestrate or schedule a set of jobs
+
+commands:
+  yum_install_curl:
+    steps:
+      - run:
+          name: Install curl utility to use CircleCI workspace
+          command: |
+            yum install curl -y
+
+  destroy_environment:
+    steps:
+      - run:
+          name: Delete CloudFormation Stack
+          when: on_fail
+          command: |
+            aws cloudformation delete-stack --stack-name InfrastructureCreationStack-${CIRCLE_WORKFLOW_ID:0:5}
+
+jobs:
+  create_infrastructure:
+    docker:
+      - image: amazon/aws-cli
+    steps:
+      - checkout
+      - run:
+          name: Install JQ
+          command: |
+            yum install jq -y
+      - run:
+          name: Add CircleCIWorkflowID to CloudFormation parameters
+          command: |
+            cat template.json | jq '.[3] |= . + {"ParameterKey": "CircleCIWorkflowID", "ParameterValue": '\"${CIRCLE_WORKFLOW_ID:0:5}\"'}' > circleci_template.json
+
+      - run:
+          name: Create Cloudformation Stack
+          command: |
+            aws cloudformation create-stack \
+              --stack-name InfrastructureCreationStack-${CIRCLE_WORKFLOW_ID:0:5} \
+              --template-body file://template.yml \
+              --parameters file://circleci_template.json \
+              --region us-west-2
+      - run:
+          name: Wait until CloudFormation stack create is complete
+          command: |
+            aws cloudformation wait stack-create-complete \
+              --stack-name InfrastructureCreationStack-${CIRCLE_WORKFLOW_ID:0:5}
+      - destroy_environment
+  generate_inventory_file:
+    docker:
+      - image: amazon/aws-cli
+    steps:
+      - run:
+          name: Install tar utility to use CircleCI workspace
+          command: |
+            yum install tar gzip -y
+      - run:
+          name: Populate Inventory file
+          command: |
+            if [[ -f "inventory.txt" ]]; then
+                  rm inventory.txt;
+            fi
+            echo "[all]" > inventory.txt
+            PublicIp=$(aws ec2 describe-instances \
+            	--query 'Reservations[*].Instances[*].PublicIpAddress' \
+            	--filters "Name=tag:Name,Values=Udacity-Infrastructure-Creation-EC2Instance-CircleCI-${CIRCLE_WORKFLOW_ID:0:5}" \
+            	--output text)
+            echo $PublicIp
+            echo $PublicIp >> inventory.txt
+            cat inventory.txt
+      - persist_to_workspace:
+          root: .
+          paths:
+            - inventory.txt
+  configure_infrastructure:
+    docker:
+      - image: python:3.7-alpine3.11
+    steps:
+      - checkout
+      - add_ssh_keys:
+          fingerprints: [ "a8:64:4c:1a:aa:1f:e1:89:0d:d4:29:80:2e:5a:ab:07" ]
+      - run:
+          name: Install dependencies
+          command: |
+            # install the dependencies needed for your playbook
+            apk add --update ansible
+      - attach_workspace:
+          at: .
+      - run:
+          name: Print inventory contents
+          command: |
+            cat inventory.txt
+      - run:
+          name: Configure server
+          command: |
+            ansible-playbook -i inventory.txt ansible_config.yml
+
+  smoke_test:
+    docker:
+      - image: amazon/aws-cli
+    steps:
+      - run:
+          name: Perform smoke test
+          command: |
+            URL=$(aws cloudformation describe-stacks \
+              --stack-name InfrastructureCreationStack-${CIRCLE_WORKFLOW_ID:0:5} | grep -Eo '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}'):3000
+            if curl -s --head ${URL}
+            then
+              echo "Smoke test passed! Can access website!!"
+              exit 0
+            else
+              echo "Smoke test failed. Cannot access website."
+              exit 1
+            fi
+  break_down_infrastructure:
+    docker:
+      - image: amazon/aws-cli
+    steps:
+      - run:
+          name: Destroy CloudFormation Stack
+          command: |
+            aws cloudformation delete-stack --stack-name InfrastructureCreationStack-${CIRCLE_WORKFLOW_ID:0:5}
+
+
+workflows:
+  # Name the workflow "welcome"
+  InfrastructureCreationWorkflow:
+    # Run the welcome/run job in its own container
+    jobs:
+      - create_infrastructure
+      - generate_inventory_file:
+          requires:
+            - create_infrastructure
+      - configure_infrastructure:
+          requires:
+            - generate_inventory_file
+      - smoke_test:
+          requires:
+            - configure_infrastructure
+      - hold:
+          type: approval
+          requires:
+            - smoke_test
+      - break_down_infrastructure:
+          requires:
+            - hold

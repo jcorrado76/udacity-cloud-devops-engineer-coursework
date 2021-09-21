@@ -1,0 +1,40 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  This CloudFormation template is a basic template to showcase creating infrastructure as the result of a CircleCI job.
+
+Parameters:
+  EnvironmentName:
+    Description: An environment name that will be prefixed to resource names
+    Type: String
+  AMIID:
+    Description: The AMI to use for our web server
+    Type: String
+  KEYPAIRID:
+    Description: The key pair to use to spin up the EC2 instance
+    Type: String
+
+Resources:
+  InstanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Enable SSH access via port 22
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Ref EnvironmentName-EC2Instance
+
+  EC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      SecurityGroups:
+        - !Ref InstanceSecurityGroup
+      KeyName: !Ref KEYPAIRID
+      ImageId: !Ref AMIID
+      InstanceType: t3.micro
+      Tags:
+        - Key: Name
+          Value: !Ref EnvironmentName-SG
